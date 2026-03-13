@@ -1,0 +1,48 @@
+parameters:
+    notification.throttle_limit_per_hour: 300
+    notification.retry_max_attempts: 5
+    notification.retry_base_delay_seconds: 60
+
+services:
+    Psr\Clock\ClockInterface:
+        class: Symfony\Component\Clock\NativeClock
+
+    App\Domain\Notification\Repository\NotificationRepository:
+        alias: App\Infrastructure\Persistence\DoctrineNotificationRepository
+
+    App\Domain\Notification\Service\FailoverPolicy:
+        class: App\Infrastructure\Notification\ConfigurableFailoverPolicy
+
+    App\Domain\Notification\Service\ThrottlePolicy:
+        class: App\Infrastructure\Notification\ConfigurableThrottlePolicy
+        arguments:
+            $limitPerHour: '%notification.throttle_limit_per_hour%'
+
+    App\Domain\Notification\Service\RetryPolicy:
+        class: App\Infrastructure\Notification\ConfigurableRetryPolicy
+        arguments:
+            $maxRetries: '%notification.retry_max_attempts%'
+            $baseDelaySeconds: '%notification.retry_base_delay_seconds%'
+
+    App\Domain\Notification\Service\ProviderSelector:
+        class: App\Infrastructure\Notification\DefaultProviderSelector
+
+    App\Domain\Notification\Service\NotificationDispatcher:
+        class: App\Infrastructure\Notification\DefaultNotificationDispatcher
+        arguments:
+            $smsProviders: !tagged_iterator notification.sms_provider
+            $emailProviders: !tagged_iterator notification.email_provider
+            $pushProviders: !tagged_iterator notification.push_provider
+            $messengerProviders: !tagged_iterator notification.messenger_provider
+
+    App\Infrastructure\Provider\SymfonyMailerEmailProvider:
+        tags: ['notification.email_provider']
+        arguments:
+            $fromEmail: '%env(default:noreply@localhost:MAILER_FROM_EMAIL)%'
+
+    App\Infrastructure\Provider\TwilioSmsProvider:
+        tags: ['notification.sms_provider']
+        arguments:
+            $accountSid: '%env(default::TWILIO_ACCOUNT_SID)%'
+            $authToken: '%env(default::TWILIO_AUTH_TOKEN)%'
+            $fromNumber: '%env(default::TWILIO_FROM_NUMBER)%'
